@@ -36,7 +36,7 @@ class Mypy(Linter):
 
     regex = r'^.+\.py:(?P<line>\d+):((?P<col>\d+):)? error: (?P<message>.+)'
     error_stream = util.STREAM_BOTH
-    line_col_base = (1, 0)
+    line_col_base = (1, 1)
     # multiline = False
 
     # mypy takes quite some time, so we only do it on saved files.
@@ -81,8 +81,6 @@ class Mypy(Linter):
         cmd = [
             self.executable_path,
             '*',
-            '--follow-imports=silent',  # or 'skip'
-            '--ignore-missing-imports',
             '--show-column-numbers',
             '--hide-error-context',
             '@'
