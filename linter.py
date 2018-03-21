@@ -13,12 +13,14 @@
 
 import logging
 import os
+import re
 import shutil
 import tempfile
 import re
 
 from SublimeLinter.lint import const
-from SublimeLinter.lint import PythonLinter, util
+from SublimeLinter.lint import util
+from SublimeLinter.lint import PythonLinter
 
 
 TMPDIR_PREFIX = "SublimeLinter-contrib-mypy-"
@@ -36,8 +38,7 @@ class Mypy(PythonLinter):
 
     executable = "mypy"
     regex = r'^[^:]+:(?P<line>\d+):((?P<col>\d+):)?\s*((?P<error>error)|(?P<warning>warning)):\s*(?P<message>.+)'
-    version_re = r'(?P<version>\d+\.\d+(\.\d+)?)'
-    line_col_base = (1, 0)
+    line_col_base = (1, 1)
     tempfile_suffix = 'py'
     default_type = const.WARNING
 
@@ -75,12 +76,12 @@ class Mypy(PythonLinter):
                 # '@' needs to be the (temporary) shadow file,
                 # while we request the normal filename
                 # to be checked in its normal environment.
-                '--shadow-file', self.filename, '@',
+                '--shadow-file', self.filename, '${temp_file}',
                 # The file we want to lint on the surface
                 self.filename
             ])
         else:
-            cmd.append('@')
+            cmd.append('${temp_file}')
 
         # Add a temporary cache dir to the command if none was specified.
         # Helps keep the environment clean
@@ -94,15 +95,31 @@ class Mypy(PythonLinter):
                 tmp_dir = tempfile.TemporaryDirectory(prefix=TMPDIR_PREFIX)
                 tmpdirs[cwd] = tmp_dir
                 cache_dir = tmp_dir.name
-                logger.debug("Created temporary cache dir at: %s", cache_dir)
+                logger.info("Created temporary cache dir at: %s", cache_dir)
             cmd[1:1] = ["--cache-dir", cache_dir]
 
         return cmd
 
+    def split_match(self, match):
+        lint_match = super().split_match(match)
+        # Column numbers were 0-based before version 0.570
+        if self._get_version() < (0, 570):
+            lint_match = lint_match._replace(col=lint_match.col - 1)
+        return lint_match
+
     def _get_version(self):
-        """Return installed mypy version as a string."""
-        output = util.communicate(self.executable + ' --version')
-        version = re.findall(self.version_re, str(output))[0][0]
+        """Determine the linter's version by command invocation."""
+        success, cmd = self.context_sensitive_executable_path(self.executable)
+        if isinstance(cmd, str):
+            cmd = [cmd]
+        cmd.append('--version')
+        output = util.communicate(cmd)
+        match = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", output)
+        if not match:
+            logger.info("failed to determine mypy version. output:\n%s", output)
+            return ()
+        version = tuple(int(g) for g in match.groups() if g)
+        logger.info("mypy version: %s", version)
         return version
 
 
