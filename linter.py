@@ -53,12 +53,17 @@ class Mypy(PythonLinter):
         'selector': "source.python",
     }
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        version = float(self._get_version())
-        if version >= 0.57:
+    def run(self, *args):
+        # Column numbers were 0-based before version 0.570
+        version = self._get_version()
+        if version < (0, 520):
+            # abort lint
+            raise RuntimeError("mypy linter plugin requires at least version 0.520")
+        if version < (0, 570):
+            self.line_col_base = (1, 0)
+        else:
             self.line_col_base = (1, 1)
+        super().run(*args)
 
     def cmd(self):
         """Return a list with the command line to execute."""
@@ -99,13 +104,6 @@ class Mypy(PythonLinter):
             cmd[1:1] = ["--cache-dir", cache_dir]
 
         return cmd
-
-    def split_match(self, match):
-        lint_match = super().split_match(match)
-        # Column numbers were 0-based before version 0.570
-        if self._get_version() < (0, 570):
-            lint_match = lint_match._replace(col=lint_match.col - 1)
-        return lint_match
 
     def _get_version(self):
         """Determine the linter's version by command invocation."""
